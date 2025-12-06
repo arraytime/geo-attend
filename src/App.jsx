@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore, collection, addDoc, query, where, 
@@ -10,9 +10,13 @@ import {
 } from 'firebase/auth';
 import { 
   MapPin, Smartphone, ShieldAlert, CheckCircle, 
-  Navigation, User, Users, FileSpreadsheet, 
+  Navigation, User, FileSpreadsheet, 
   RefreshCw, LogOut, Lock, Unlock, X 
 } from 'lucide-react';
+
+// --- CSS STYLES (Standard CSS - No Tailwind needed) ---
+
+import './index.css'
 
 // --- Configuration ---
 const OFFICE_LOCATION = {
@@ -21,25 +25,33 @@ const OFFICE_LOCATION = {
   name: "Headquarters"
 };
 const GEOFENCE_RADIUS_METERS = 50;
-const MAX_ACCURACY_THRESHOLD = 200; // Meters (reject if GPS is too fuzzy)
+const MAX_ACCURACY_THRESHOLD = 200;
 
 // --- Firebase Setup ---
-// Uses the environment's built-in config for the preview to work.
-// If you export to GitHub later, you will replace this block with your own keys.
-// Paste YOUR config from Firebase Console here
-const firebaseConfig = {
-  apiKey: "AIzaSyD4xIEYfN4sOzZ6trSUlOn893SFk-_Ewf4",
-  authDomain: "attendance-app-19587.firebaseapp.com",
-  projectId: "attendance-app-19587",
-  storageBucket: "attendance-app-19587.firebasestorage.app",
-  messagingSenderId: "336026010200",
-  appId: "1:336026010200:web:eb865d4733df27c67d002d"
-};
+let firebaseConfig;
+
+// 1. Try to detect if we are in the AI Editor (Local Preview)
+if (typeof __firebase_config !== 'undefined') {
+  firebaseConfig = JSON.parse(__firebase_config);
+} else {
+  // 2. Fallback for GitHub Pages / Production
+  // -------------------------------------------------------------
+  // 🚨 CRITICAL: PASTE YOUR FIREBASE KEYS BELOW BEFORE DEPLOYING
+  // -------------------------------------------------------------
+  firebaseConfig = {
+    apiKey: "AIzaSyD4xIEYfN4sOzZ6trSUlOn893SFk-_Ewf4",
+    authDomain: "attendance-app-19587.firebaseapp.com",
+    projectId: "attendance-app-19587",
+    storageBucket: "attendance-app-19587.firebasestorage.app",
+    messagingSenderId: "336026010200",
+    appId: "1:336026010200:web:eb865d4733df27c67d002d"
+  };
+}
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = "geo-attend"; // You can just name this string whatever you want
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'geo-attend-v1';
 
 // --- Utilities ---
 const generateUUID = () => {
@@ -58,7 +70,6 @@ const getDeviceToken = () => {
   return token;
 };
 
-// Haversine Formula for distance
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371e3; // metres
   const φ1 = lat1 * Math.PI/180;
@@ -71,7 +82,7 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
             Math.sin(Δλ/2) * Math.sin(Δλ/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 
-  return R * c; // in metres
+  return R * c;
 };
 
 const exportToCSV = (data, filename) => {
@@ -102,56 +113,46 @@ const MOCK_EMPLOYEES = [
 // --- Components ---
 
 const LoadingScreen = () => (
-  <div className="flex items-center justify-center h-screen bg-slate-50">
-    <div className="text-center">
-      <RefreshCw className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-      <h2 className="text-xl font-semibold text-slate-700">Initializing System...</h2>
-      <p className="text-slate-500 text-sm">Verifying Device Token & GPS</p>
-    </div>
+  <div className="loading-screen">
+    <RefreshCw className="spin" size={48} color="#2563eb" />
+    <h2 style={{color: '#334155', marginTop: '20px'}}>Initializing System...</h2>
+    <p style={{color: '#64748b'}}>Verifying Device Token & GPS</p>
   </div>
 );
 
 const LoginScreen = ({ onLogin }) => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-indigo-800 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
-        <div className="text-center mb-8">
-          <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <MapPin className="w-8 h-8 text-blue-600" />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-800">GeoAttend</h1>
-          <p className="text-slate-500">Secure Location-Based Attendance</p>
+    <div className="login-container">
+      <div className="login-card">
+        <div className="icon-circle">
+          <MapPin size={32} />
         </div>
+        <h1 style={{fontSize: '24px', fontWeight: 'bold', margin: '0 0 8px 0'}}>GeoAttend</h1>
+        <p style={{color: '#64748b', margin: 0}}>Secure Location-Based Attendance</p>
 
-        <div className="space-y-4">
-          <p className="text-sm font-medium text-slate-700">Select User (Simulation):</p>
+        <div className="user-select-list">
+          <p style={{fontSize: '14px', fontWeight: '600', color: '#334155', textAlign: 'left'}}>Select User (Simulation):</p>
           {MOCK_EMPLOYEES.map(emp => (
             <button
               key={emp.id}
               onClick={() => onLogin(emp)}
-              className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all hover:shadow-md ${
-                emp.role === 'admin' 
-                  ? 'bg-slate-50 border-slate-200 hover:border-slate-400' 
-                  : 'bg-white border-slate-200 hover:border-blue-400'
-              }`}
+              className="user-btn"
             >
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                  emp.role === 'admin' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'
-                }`}>
+              <div className="user-info">
+                <div className={`user-avatar ${emp.role === 'admin' ? 'admin' : ''}`}>
                   {emp.role === 'admin' ? <Lock size={18} /> : <User size={18} />}
                 </div>
-                <div className="text-left">
-                  <div className="font-semibold text-slate-800">{emp.name}</div>
-                  <div className="text-xs text-slate-500 uppercase tracking-wider">{emp.role}</div>
+                <div>
+                  <div style={{fontWeight: '600', color: '#1e293b'}}>{emp.name}</div>
+                  <div style={{fontSize: '11px', color: '#64748b', textTransform: 'uppercase'}}>{emp.role}</div>
                 </div>
               </div>
-              <Navigation className="text-slate-300" size={16} />
+              <Navigation size={16} color="#cbd5e1" />
             </button>
           ))}
         </div>
         
-        <div className="mt-8 text-center text-xs text-slate-400">
+        <div style={{marginTop: '30px', fontSize: '11px', color: '#94a3b8'}}>
           Device ID: {getDeviceToken().substring(0, 8)}...
         </div>
       </div>
@@ -168,60 +169,40 @@ const EmployeeDashboard = ({ user, userData, deviceToken, onLogout }) => {
   const [checkingIn, setCheckingIn] = useState(false);
   const [todayLog, setTodayLog] = useState(null);
 
-  // Firestore listeners
   useEffect(() => {
     if (!user) return;
-    
-    // STRICT MODE: Fetch all to avoid Index/Permission errors with 'where' clauses
     const q = query(
       collection(db, 'artifacts', appId, 'public', 'data', 'attendance')
     );
-
     const unsub = onSnapshot(q, (snapshot) => {
       const logs = snapshot.docs.map(d => d.data());
-      
-      // Client-side filtering
       const userLogs = logs.filter(log => log.userId === user.id);
-      
       const startOfDay = new Date();
       startOfDay.setHours(0,0,0,0);
-      
       const foundLog = userLogs.find(log => {
         if (!log.timestamp) return false;
         const logDate = new Date(log.timestamp.seconds * 1000);
         return logDate >= startOfDay;
       });
-
       setTodayLog(foundLog || null);
-    }, (error) => {
-      console.error("Firestore Listen Error:", error);
-    });
-
+    }, (err) => console.error("Firestore Error:", err));
     return () => unsub();
   }, [user]);
 
   const refreshLocation = () => {
     setLoadingLoc(true);
     setError(null);
-
     if (!navigator.geolocation) {
-      setError("Geolocation is not supported by your browser");
+      setError("Geolocation is not supported");
       setLoadingLoc(false);
       return;
     }
-
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude, accuracy: acc } = position.coords;
         setLocation({ lat: latitude, lng: longitude });
         setAccuracy(acc);
-        
-        const dist = calculateDistance(
-          latitude, 
-          longitude, 
-          OFFICE_LOCATION.lat, 
-          OFFICE_LOCATION.lng
-        );
+        const dist = calculateDistance(latitude, longitude, OFFICE_LOCATION.lat, OFFICE_LOCATION.lng);
         setDistance(dist);
         setLoadingLoc(false);
       },
@@ -236,28 +217,15 @@ const EmployeeDashboard = ({ user, userData, deviceToken, onLogout }) => {
   const handleCheckIn = async () => {
     if (!distance) return;
     setCheckingIn(true);
-
-    // Device Authorization Check
     let isAuthorized = true;
-    let authMessage = "Authorized Device";
-
-    // If user has a registered device and it doesn't match current
     if (userData?.registeredDevice && userData.registeredDevice !== deviceToken) {
       isAuthorized = false;
-      authMessage = "Unauthorized Device Mismatch";
     }
-
-    // If user has NO registered device, we register this one now (Day 1 logic)
     if (!userData?.registeredDevice) {
        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.id), {
          registeredDevice: deviceToken,
          deviceModel: navigator.userAgent
        });
-    }
-
-    if (!isAuthorized) {
-      // Intentionally not using alert here to keep flow smooth, status will update
-      console.warn("Unauthorized check-in attempt");
     }
 
     try {
@@ -276,128 +244,97 @@ const EmployeeDashboard = ({ user, userData, deviceToken, onLogout }) => {
       console.error("Error logging attendance", e);
       setError("Failed to save attendance.");
     }
-
     setCheckingIn(false);
   };
 
-  // Status Logic
   const isWithinFence = distance !== null && distance <= GEOFENCE_RADIUS_METERS;
   const isAccurate = accuracy !== null && accuracy <= MAX_ACCURACY_THRESHOLD;
   const deviceMismatch = userData?.registeredDevice && userData.registeredDevice !== deviceToken;
 
   return (
-    <div className="max-w-md mx-auto bg-slate-50 min-h-screen pb-20">
+    <div className="app-container">
       {/* Header */}
-      <div className="bg-blue-600 p-6 rounded-b-3xl shadow-lg text-white">
-        <div className="flex justify-between items-start mb-4">
+      <div className="dashboard-header">
+        <div className="header-top">
           <div>
-            <h2 className="text-2xl font-bold">Hello, {user.name.split(' ')[0]}</h2>
-            <p className="opacity-80 text-sm">{new Date().toDateString()}</p>
+            <h2 style={{fontSize: '24px', fontWeight: 'bold', margin: 0}}>Hello, {user.name.split(' ')[0]}</h2>
+            <p style={{opacity: 0.8, fontSize: '14px', margin: 0}}>{new Date().toDateString()}</p>
           </div>
-          <div className="flex gap-2">
-            <div className="bg-blue-500 p-2 rounded-lg" title="Device Status">
-              <Smartphone size={20} />
-            </div>
-            <button 
-              onClick={onLogout} 
-              className="bg-blue-500 hover:bg-blue-400 p-2 rounded-lg transition-colors text-white" 
-              title="Logout"
-            >
-              <LogOut size={20} />
-            </button>
+          <div style={{display: 'flex', gap: '8px'}}>
+            <button className="icon-btn" title="Device Status"><Smartphone size={20} /></button>
+            <button onClick={onLogout} className="icon-btn" title="Logout"><LogOut size={20} /></button>
           </div>
         </div>
 
-        {/* Status Card */}
-        <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20">
-          <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${todayLog ? 'bg-green-400' : 'bg-amber-400'}`} />
-            <span className="font-medium">
-              {todayLog ? `Checked In: ${todayLog.status}` : 'Not Checked In'}
-            </span>
+        <div className="status-card">
+          <div className="status-indicator">
+            <div className={`dot ${todayLog ? 'green' : 'amber'}`} />
+            <span>{todayLog ? `Checked In: ${todayLog.status}` : 'Not Checked In'}</span>
           </div>
           {todayLog && (
-            <div className="mt-2 text-xs opacity-75">
+            <div style={{marginTop: '8px', fontSize: '12px', opacity: 0.75}}>
               Time: {new Date(todayLog.timestamp?.seconds * 1000).toLocaleTimeString()}
             </div>
           )}
         </div>
       </div>
 
-      <div className="p-6 space-y-6">
-        
-        {/* Device Alert */}
+      <div className="content-wrapper">
         {deviceMismatch && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3 items-start">
-            <ShieldAlert className="text-red-600 shrink-0" />
+          <div className="alert-card">
+            <ShieldAlert size={24} />
             <div>
-              <h3 className="font-bold text-red-700 text-sm">Unauthorized Device</h3>
-              <p className="text-red-600 text-xs mt-1">
-                This device ID does not match your registered device. Attendance will be flagged for Admin review.
-              </p>
+              <h3 style={{fontSize: '14px', fontWeight: 'bold', margin: 0}}>Unauthorized Device</h3>
+              <p style={{fontSize: '12px', margin: '4px 0 0'}}>Device ID mismatch. Attendance will be flagged.</p>
             </div>
           </div>
         )}
 
-        {/* Location Card */}
-        <div className="bg-white rounded-2xl shadow-sm p-5 border border-slate-100">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+        <div className="card">
+          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
+            <h3 style={{fontWeight: '600', color: '#334155', display: 'flex', alignItems: 'center', gap: '8px', margin: 0}}>
               <MapPin size={18} /> Location Status
             </h3>
-            <button 
-              onClick={refreshLocation} 
-              className="text-blue-600 hover:bg-blue-50 p-2 rounded-full transition-colors"
-            >
-              <RefreshCw size={18} className={loadingLoc ? 'animate-spin' : ''} />
+            <button onClick={refreshLocation} style={{background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb'}}>
+              <RefreshCw size={18} className={loadingLoc ? 'spin' : ''} />
             </button>
           </div>
 
           {error ? (
-             <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg">{error}</div>
+             <div className="badge error" style={{textAlign: 'center', padding: '12px'}}>{error}</div>
           ) : !location ? (
-            <div className="text-slate-400 text-sm italic">Acquiring GPS...</div>
+            <div style={{textAlign: 'center', color: '#94a3b8', fontStyle: 'italic'}}>Acquiring GPS...</div>
           ) : (
-            <div className="space-y-4">
-              <div className="flex justify-between items-end border-b pb-3 border-slate-100">
-                <span className="text-slate-500 text-sm">Distance to Office</span>
-                <span className={`text-2xl font-bold ${isWithinFence ? 'text-green-600' : 'text-orange-500'}`}>
+            <div>
+              <div className="info-row">
+                <span style={{fontSize: '14px', color: '#64748b'}}>Distance to Office</span>
+                <span style={{fontSize: '20px', fontWeight: 'bold', color: isWithinFence ? '#16a34a' : '#f97316'}}>
                   {Math.round(distance)}m
                 </span>
               </div>
-              
-              <div className="flex justify-between items-center">
-                 <span className="text-slate-500 text-xs">GPS Accuracy</span>
-                 <span className={`text-xs font-medium px-2 py-1 rounded ${isAccurate ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                   ±{Math.round(accuracy)}m {isAccurate ? ' (Good)' : '(Poor)'}
+              <div className="info-row">
+                 <span style={{fontSize: '14px', color: '#64748b'}}>GPS Accuracy</span>
+                 <span className={`badge ${isAccurate ? 'success' : 'error'}`}>
+                   ±{Math.round(accuracy)}m {isAccurate ? '(Good)' : '(Poor)'}
                  </span>
               </div>
-
               {!isAccurate && (
-                <p className="text-xs text-orange-600 bg-orange-50 p-2 rounded">
-                  GPS signal is weak. Try moving near a window or enabling WiFi.
+                <p style={{fontSize: '12px', color: '#d97706', background: '#fffbeb', padding: '8px', borderRadius: '8px', marginTop: '12px'}}>
+                  Weak signal. Move near a window.
                 </p>
               )}
             </div>
           )}
         </div>
 
-        {/* Action Button */}
         {!todayLog && (
           <button
             onClick={handleCheckIn}
             disabled={!location || loadingLoc || checkingIn || !isAccurate}
-            className={`w-full py-4 rounded-xl text-lg font-bold shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-2
-              ${!location || !isAccurate 
-                ? 'bg-slate-300 text-slate-500 cursor-not-allowed' 
-                : isWithinFence 
-                  ? 'bg-green-600 text-white hover:bg-green-700 shadow-green-200'
-                  : 'bg-orange-500 text-white hover:bg-orange-600 shadow-orange-200'
-              }
-            `}
+            className={`main-btn ${(!location || !isAccurate) ? '' : isWithinFence ? 'btn-success' : 'btn-warning'}`}
           >
             {checkingIn ? (
-              <RefreshCw className="animate-spin" />
+              <RefreshCw className="spin" />
             ) : isWithinFence ? (
               <><CheckCircle /> CHECK IN NOW</>
             ) : (
@@ -407,15 +344,15 @@ const EmployeeDashboard = ({ user, userData, deviceToken, onLogout }) => {
         )}
         
         {todayLog && (
-          <div className="text-center p-6 bg-green-50 rounded-xl border border-green-200">
-             <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-2" />
-             <h3 className="text-green-800 font-bold">Attendance Marked</h3>
-             <p className="text-green-600 text-sm">Have a productive day!</p>
+          <div className="success-banner">
+             <CheckCircle size={48} style={{marginBottom: '8px'}} />
+             <h3 style={{margin: 0}}>Attendance Marked</h3>
+             <p style={{margin: '4px 0 0', fontSize: '14px'}}>Have a productive day!</p>
           </div>
         )}
 
-        <div className="text-center text-xs text-slate-400 mt-8">
-           UDT: {deviceToken.substring(0,8)}... | v1.0.4
+        <div style={{textAlign: 'center', fontSize: '11px', color: '#cbd5e1', marginTop: 'auto'}}>
+           UDT: {deviceToken.substring(0,8)}... | v1.0.5
         </div>
       </div>
     </div>
@@ -424,196 +361,140 @@ const EmployeeDashboard = ({ user, userData, deviceToken, onLogout }) => {
 
 const AdminDashboard = ({ user, onLogout }) => {
   const [logs, setLogs] = useState([]);
-  const [pendingDevices, setPendingDevices] = useState([]);
   const [users, setUsers] = useState([]);
   const [confirmResetId, setConfirmResetId] = useState(null);
 
   useEffect(() => {
-    // 1. Fetch Logs
-    const qLogs = query(
-      collection(db, 'artifacts', appId, 'public', 'data', 'attendance')
-    );
+    const qLogs = query(collection(db, 'artifacts', appId, 'public', 'data', 'attendance'));
     const unsubLogs = onSnapshot(qLogs, (snap) => {
       const fetchedLogs = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      // Sort in JS, handle potentially missing seconds during writes
-      fetchedLogs.sort((a, b) => {
-        const timeA = a.timestamp?.seconds || 0;
-        const timeB = b.timestamp?.seconds || 0;
-        return timeB - timeA;
-      });
+      fetchedLogs.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
       setLogs(fetchedLogs);
-    }, (error) => {
-      console.error("Admin Logs Error:", error);
     });
 
-    // 2. Fetch Users for Device Management
     const qUsers = query(collection(db, 'artifacts', appId, 'public', 'data', 'users'));
     const unsubUsers = onSnapshot(qUsers, (snap) => {
-      const userData = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      setUsers(userData);
-    }, (error) => {
-      console.error("Admin Users Error:", error);
+      setUsers(snap.docs.map(d => ({id: d.id, ...d.data()})));
     });
 
-    return () => {
-      unsubLogs();
-      unsubUsers();
-    };
+    return () => { unsubLogs(); unsubUsers(); };
   }, []);
 
   const handleResetDevice = async (userId) => {
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', userId), {
-        registeredDevice: null
-      });
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', userId), { registeredDevice: null });
       setConfirmResetId(null);
-    } catch (err) {
-      console.error("Failed to reset device:", err);
-    }
-  };
-
-  const handleExport = () => {
-    exportToCSV(logs, `Attendance_Export_${new Date().toISOString().split('T')[0]}.csv`);
+    } catch (err) { console.error("Reset failed:", err); }
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      {/* Admin Nav */}
-      <nav className="bg-slate-900 text-white p-4 shadow-md sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="text-blue-400" />
-            <h1 className="font-bold text-lg">Admin Console</h1>
+    <div style={{background: '#f1f5f9', minHeight: '100vh'}}>
+      <nav className="admin-nav">
+        <div style={{maxWidth: '1000px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+          <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+            <ShieldAlert color="#60a5fa" />
+            <span style={{fontWeight: 'bold', fontSize: '18px'}}>Admin Console</span>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={handleExport} className="bg-green-600 hover:bg-green-700 text-xs px-4 py-2 rounded flex items-center gap-2">
-              <FileSpreadsheet size={16} /> Sync / Export CSV
+          <div style={{display: 'flex', gap: '12px'}}>
+            <button onClick={() => exportToCSV(logs, 'attendance.csv')} className="btn-small success">
+              <FileSpreadsheet size={16} /> Export CSV
             </button>
-            <button 
-              onClick={onLogout} 
-              className="text-slate-300 hover:text-white p-2 hover:bg-slate-800 rounded-full transition-colors"
-              title="Logout"
-            >
+            <button onClick={onLogout} style={{background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer'}}>
               <LogOut size={20} />
             </button>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto p-6 space-y-8">
-        
-        {/* Stats Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-500">
-            <div className="text-slate-500 text-sm font-medium uppercase">Today's Check-ins</div>
-            <div className="text-3xl font-bold text-slate-800">
+      <div className="admin-container">
+        {/* Stats */}
+        <div className="stats-grid">
+          <div className="stat-card" style={{borderLeftColor: '#2563eb'}}>
+            <div style={{fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase'}}>Today's Check-ins</div>
+            <div style={{fontSize: '32px', fontWeight: 'bold', color: '#1e293b'}}>
               {logs.filter(l => new Date(l.timestamp?.seconds*1000).toDateString() === new Date().toDateString()).length}
             </div>
           </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
-             <div className="text-slate-500 text-sm font-medium uppercase">On Time & Authorized</div>
-            <div className="text-3xl font-bold text-slate-800">
+          <div className="stat-card" style={{borderLeftColor: '#16a34a'}}>
+             <div style={{fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase'}}>On Time & Authorized</div>
+            <div style={{fontSize: '32px', fontWeight: 'bold', color: '#1e293b'}}>
               {logs.filter(l => l.authorized && l.status === 'Present').length}
             </div>
           </div>
-           <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-red-500">
-             <div className="text-slate-500 text-sm font-medium uppercase">Flags / Blocked</div>
-            <div className="text-3xl font-bold text-slate-800">
+           <div className="stat-card" style={{borderLeftColor: '#dc2626'}}>
+             <div style={{fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase'}}>Flags / Blocked</div>
+            <div style={{fontSize: '32px', fontWeight: 'bold', color: '#1e293b'}}>
               {logs.filter(l => !l.authorized || l.status === 'Blocked').length}
             </div>
           </div>
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Recent Activity Feed */}
-          <div className="lg:col-span-2 bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="font-bold text-slate-700">Live Attendance Feed</h3>
-              <span className="text-xs text-slate-400">Real-time updates</span>
+        <div className="admin-layout">
+          {/* Feed */}
+          <div className="card" style={{padding: 0, overflow: 'hidden'}}>
+            <div style={{padding: '16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0'}}>
+              <h3 style={{margin: 0, fontSize: '16px'}}>Live Attendance Feed</h3>
             </div>
-            <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
-              {logs.length === 0 && <div className="p-8 text-center text-slate-400">No records found.</div>}
+            <div className="logs-list">
               {logs.map((log) => (
-                <div key={log.id} className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${log.authorized ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
+                <div key={log.id} className="log-item">
+                  <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
+                    <div className="user-avatar" style={{fontSize: '14px', fontWeight: 'bold'}}>
                       {log.userName.charAt(0)}
                     </div>
                     <div>
-                      <div className="font-medium text-slate-800 flex items-center gap-2">
+                      <div style={{fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px'}}>
                         {log.userName}
-                        {!log.authorized && <span className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5 rounded border border-red-200">AUTH FAIL</span>}
+                        {!log.authorized && <span className="badge error">AUTH FAIL</span>}
                       </div>
-                      <div className="text-xs text-slate-500">
+                      <div style={{fontSize: '12px', color: '#64748b'}}>
                         {new Date(log.timestamp?.seconds * 1000).toLocaleString()} • {Math.round(log.distance)}m away
                       </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
-                      log.status === 'Present' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
-                    }`}>
-                      {log.status}
-                    </span>
-                  </div>
+                  <span className={`badge ${log.status === 'Present' ? 'success' : 'warning'}`}>
+                    {log.status}
+                  </span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Device Management */}
-          <div className="bg-white rounded-xl shadow-sm h-fit">
-            <div className="p-4 border-b border-slate-100 bg-slate-50">
-              <h3 className="font-bold text-slate-700">Device Registry</h3>
-            </div>
-            <div className="p-4 space-y-4">
-              {users.filter(u => u.role !== 'admin').map(u => (
-                <div key={u.id} className="border border-slate-100 rounded-lg p-3">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-medium text-sm text-slate-700">{u.name}</span>
-                    {u.registeredDevice ? (
-                      <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100">Linked</span>
+          {/* Devices */}
+          <div className="card" style={{height: 'fit-content'}}>
+            <h3 style={{margin: '0 0 16px 0', fontSize: '16px'}}>Device Registry</h3>
+            {users.filter(u => u.role !== 'admin').map(u => (
+              <div key={u.id} className="device-item">
+                <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}>
+                  <span style={{fontWeight: '600', fontSize: '14px'}}>{u.name}</span>
+                  <span className={`badge ${u.registeredDevice ? 'success' : ''}`} style={{background: u.registeredDevice ? '#dbeafe' : '#f1f5f9', color: u.registeredDevice ? '#1d4ed8' : '#64748b'}}>
+                    {u.registeredDevice ? 'Linked' : 'Pending'}
+                  </span>
+                </div>
+                <div style={{fontSize: '10px', color: '#94a3b8', fontFamily: 'monospace', wordBreak: 'break-all'}}>
+                  {u.registeredDevice || "No device registered yet"}
+                </div>
+                {u.registeredDevice && (
+                  <div className="reset-group">
+                    {confirmResetId === u.id ? (
+                      <>
+                        <button onClick={() => handleResetDevice(u.id)} className="btn-small danger" style={{flex: 1}}>
+                          <Unlock size={12} /> Confirm
+                        </button>
+                        <button onClick={() => setConfirmResetId(null)} className="btn-small">
+                          <X size={12} />
+                        </button>
+                      </>
                     ) : (
-                      <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded">Pending</span>
+                      <button onClick={() => setConfirmResetId(u.id)} className="btn-small" style={{width: '100%'}}>
+                        <Unlock size={12} /> Reset Lock
+                      </button>
                     )}
                   </div>
-                  <div className="text-[10px] text-slate-400 font-mono break-all mb-3">
-                    {u.registeredDevice || "No device registered yet"}
-                  </div>
-                  {u.registeredDevice && (
-                    <div className="mt-2">
-                      {confirmResetId === u.id ? (
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => handleResetDevice(u.id)}
-                            className="flex-1 text-xs bg-red-600 text-white hover:bg-red-700 transition-colors py-2 rounded flex items-center justify-center gap-1"
-                          >
-                            <Unlock size={12} /> Confirm
-                          </button>
-                          <button 
-                            onClick={() => setConfirmResetId(null)}
-                            className="w-8 text-xs bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors py-2 rounded flex items-center justify-center"
-                          >
-                            <X size={12} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button 
-                          onClick={() => setConfirmResetId(u.id)}
-                          className="w-full text-xs bg-white border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors py-2 rounded text-slate-600 flex items-center justify-center gap-2"
-                        >
-                          <Unlock size={12} /> Reset Device Lock
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                )}
+              </div>
+            ))}
           </div>
-
         </div>
       </div>
     </div>
@@ -623,12 +504,12 @@ const AdminDashboard = ({ user, onLogout }) => {
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [userData, setUserData] = useState(null);
-  const [user, setUser] = useState(null); // Firebase Auth User
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 1. Initialize Firebase Auth
   useEffect(() => {
     const initAuth = async () => {
+      // Use environment token if available (for preview), else anonymous
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
         await signInWithCustomToken(auth, __initial_auth_token);
       } else {
@@ -636,67 +517,41 @@ export default function App() {
       }
     };
     initAuth();
-    
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
     });
-    return () => unsubscribe();
+    return () => unsub();
   }, []);
 
-  // 2. Fetch/Create User Profile in Firestore upon Mock Login
   const handleLogin = async (mockUser) => {
     if (!user) return;
     setLoading(true);
-
     const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', mockUser.id);
     const snap = await getDoc(userRef);
-
     if (!snap.exists()) {
-      // First time user setup in DB
-      await setDoc(userRef, {
-        id: mockUser.id,
-        name: mockUser.name,
-        role: mockUser.role,
-        registeredDevice: null // Will be set on first check-in
-      });
+      await setDoc(userRef, { id: mockUser.id, name: mockUser.name, role: mockUser.role, registeredDevice: null });
       setUserData({ ...mockUser, registeredDevice: null });
     } else {
       setUserData(snap.data());
     }
-
-    // Subscribe to user data changes (for real-time device approval updates)
-    onSnapshot(userRef, (doc) => {
-      if (doc.exists()) setUserData(doc.data());
-    });
-
+    onSnapshot(userRef, (doc) => { if (doc.exists()) setUserData(doc.data()); });
     setCurrentUser(mockUser);
     setLoading(false);
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setUserData(null);
-  };
-
-  if (loading) return <LoadingScreen />;
-
-  if (!currentUser) {
-    return <LoginScreen onLogin={handleLogin} />;
-  }
+  const handleLogout = () => { setCurrentUser(null); setUserData(null); };
 
   return (
-    <div className="font-sans text-slate-800">
-      {currentUser.role === 'admin' ? (
+    <>
+      <style>{styles}</style>
+      {loading ? <LoadingScreen /> : !currentUser ? (
+        <LoginScreen onLogin={handleLogin} />
+      ) : currentUser.role === 'admin' ? (
         <AdminDashboard user={currentUser} onLogout={handleLogout} />
       ) : (
-        <EmployeeDashboard 
-          user={currentUser} 
-          userData={userData}
-          deviceToken={getDeviceToken()} 
-          onLogout={handleLogout}
-        />
+        <EmployeeDashboard user={currentUser} userData={userData} deviceToken={getDeviceToken()} onLogout={handleLogout} />
       )}
-    </div>
+    </>
   );
 }
